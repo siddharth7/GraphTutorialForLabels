@@ -2,6 +2,7 @@ using Azure.Core;
 using Azure.Identity;
 using Microsoft.Graph;
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -70,21 +71,40 @@ namespace GraphTutorial
 
         public static async Task GetAllFilesAsync()
         {
-            IDriveItemChildrenCollectionPage driveItems = await graphClient.Me.Drive.Root.Children.Request().GetAsync();
+            //IDriveItemChildrenCollectionPage driveItems = await graphClient.Me.Drive.Root.Children.Request().GetAsync();
+            IDriveItemSearchCollectionPage driveItems = await graphClient.Me.Drive.Root.Search("").Request().GetAsync();
+            List<string> driveItemIds = new List<string>();
 
-            foreach (var item in driveItems)
-            {
-                if (item.File != null)
+            var driveItemsIterator = PageIterator<DriveItem>
+            .CreatePageIterator(
+            graphClient,
+            driveItems,
+            (item) =>
                 {
-                    var driveItemInfo = await graphClient.Me.Drive.Items[item.Id].Request().Select("Name,WebUrl,sensitivitylabel").GetAsync();
-                    object sensitivityLabelData;
-                    driveItemInfo.AdditionalData.TryGetValue("sensitivityLabel", out sensitivityLabelData);
-                    var sensitivityLabel = JsonSerializer.Deserialize<SensitivityLabel>(sensitivityLabelData.ToString());
-                    if(!string.IsNullOrEmpty(sensitivityLabel.id))
+                    if (item.File != null)
                     {
-                        Console.WriteLine("File Name: {0}, File Url: {1}, Sensitivitylabel Name: {2}, SensitivitylabelId: {3}, IsProtectectionEnabled: {4}",
-                            driveItemInfo.Name, driveItemInfo.WebUrl, sensitivityLabel.displayName, sensitivityLabel.id, sensitivityLabel.protectionEnabled);
+                        driveItemIds.Add(item.Id);
                     }
+                    return true;
+                },
+            (req) =>
+                {
+                    return req;
+                }
+            );
+
+            await driveItemsIterator.IterateAsync();
+
+            foreach (var itemId in driveItemIds)
+            {
+                var driveItemInfo = await graphClient.Me.Drive.Items[itemId].Request().Select("Name,WebUrl,sensitivitylabel").GetAsync();
+                object sensitivityLabelData;
+                driveItemInfo.AdditionalData.TryGetValue("sensitivityLabel", out sensitivityLabelData);
+                var sensitivityLabel = JsonSerializer.Deserialize<SensitivityLabel>(sensitivityLabelData.ToString());
+                if(!string.IsNullOrEmpty(sensitivityLabel.id))
+                {
+                    Console.WriteLine("File Name: {0}, File Url: {1}, Sensitivitylabel Name: {2}, SensitivitylabelId: {3}, IsProtectectionEnabled: {4}",
+                        driveItemInfo.Name, driveItemInfo.WebUrl, sensitivityLabel.displayName, sensitivityLabel.id, sensitivityLabel.protectionEnabled);
                 }
             }
         }
