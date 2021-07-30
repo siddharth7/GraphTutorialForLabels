@@ -22,12 +22,34 @@ public class SensitivityLabel
     }
 }
     
-IDriveItemChildrenCollectionPage driveItems = await graphClient.Me.Drive.Root.Children.Request().GetAsync();
-foreach (var item in driveItems)
+public static async Task GetAllFilesAsync()
 {
-    if (item.File != null)
+    IDriveItemSearchCollectionPage driveItems = await graphClient.Me.Drive.Root.Search("").Request().GetAsync();
+    List<string> driveItemIds = new List<string>();
+
+    var driveItemsIterator = PageIterator<DriveItem>
+    .CreatePageIterator(
+    graphClient,
+    driveItems,
+    (item) =>
+        {
+            if (item.File != null)
+            {
+                driveItemIds.Add(item.Id);
+            }
+            return true;
+        },
+    (req) =>
+        {
+            return req;
+        }
+    );
+
+    await driveItemsIterator.IterateAsync();
+
+    foreach (var itemId in driveItemIds)
     {
-        var driveItemInfo = await graphClient.Me.Drive.Items[item.Id].Request().Select("Name,WebUrl,sensitivitylabel").GetAsync();
+        var driveItemInfo = await graphClient.Me.Drive.Items[itemId].Request().Select("Name,WebUrl,sensitivitylabel").GetAsync();
         object sensitivityLabelData;
         driveItemInfo.AdditionalData.TryGetValue("sensitivityLabel", out sensitivityLabelData);
         var sensitivityLabel = JsonSerializer.Deserialize<SensitivityLabel>(sensitivityLabelData.ToString());
